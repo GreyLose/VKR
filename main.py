@@ -1,4 +1,3 @@
-
 """
 main.py
 """
@@ -64,7 +63,7 @@ with st.sidebar:
     
     # Добавляем опции импорта, если файлы загружены
     if st.session_state.get("imported_sequences"):
-        import_options = [f"{fname}" for fname in st.session_state.imported_sequences.keys()]
+        import_options = list(st.session_state.imported_sequences.keys())
         available_gens = import_options + available_gens
         default_gens = import_options[:1] if import_options else ["lcg", "mersenne"]
     else:
@@ -160,14 +159,17 @@ if run_btn:
                 ChiSquareTest(alpha=alpha, bins=10)
             ]
             
+            # Получаем список импортированных файлов
+            imported_files_list = list(st.session_state.get("imported_sequences", {}).keys())
+            
             for i, gen_display_name in enumerate(selected_gens):
                 try:
-                    # 🔹 Определяем тип генератора
-                    is_imported = gen_display_name.startswith(" ")
+                    # Определяем тип генератора - проверяем, есть ли имя в списке импортов
+                    is_imported = gen_display_name in imported_files_list
                     
                     if is_imported:
                         # Это импортированный файл
-                        file_name = gen_display_name.replace(" ", "")
+                        file_name = gen_display_name
                         status_text.text(f"Тестирование: {file_name}")
                         
                         # Получаем данные из session_state
@@ -181,7 +183,7 @@ if run_btn:
                         
                         sequence = imported_data["sequence"]
                         internal_type = "imported"
-                        display_name = f"{file_name}"
+                        display_name = file_name
                         
                     else:
                         # Это встроенный генератор
@@ -255,7 +257,7 @@ if st.session_state.results_data and st.session_state.df is not None:
     sequences = st.session_state.sequences
     
     # Таблица результатов
-    st.subheader(" Результаты")
+    st.subheader("Результаты")
     st.dataframe(df, use_container_width=True, hide_index=True)
     
     # Метрики качества
@@ -282,7 +284,7 @@ if st.session_state.results_data and st.session_state.df is not None:
             with metrics_cols[i]:
                 st.metric(label=gen.upper(), value=f"{pass_rate:.0%}")
     
-    st.subheader(" Показатель случайности")
+    st.subheader("Показатель случайности")
     
     # Получаем только колонки с p-value
     p_cols = [col for col in df.columns if "(p)" in col]
@@ -402,4 +404,4 @@ if st.session_state.history:
                         cols[j].metric(gen.upper(), f"{rate:.0%}")
 
 else:
-    st.info("Настройте параметры в боковой панели и нажмите ' Запустить анализ'")
+    st.info("Настройте параметры в боковой панели и нажмите 'Запустить анализ'")
