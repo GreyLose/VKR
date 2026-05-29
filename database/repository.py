@@ -1,38 +1,93 @@
-from sqlalchemy.orm import Session
-from typing import List, Optional
-from .models import User, Generator, TestResult
+"""
+database/repository.py
+Репозитории для работы с базой данных (паттерн Repository)
+"""
 
-class UserRepository:
-    def __init__(self, db: Session):
-        self.db = db
-    
-    def create(self, username: str) -> User:
-        user = User(username=username)
-        self.db.add(user)
-        self.db.commit()
-        self.db.refresh(user)
-        return user
+from sqlalchemy.orm import Session, selectinload
+from typing import List, Optional, Tuple, Any
+from sqlalchemy import func, case, Integer
+from .models import Generator, TestResult
 
-    def get_by_username(self, username: str) -> Optional[User]:
-        return self.db.query(User).filter(User.username == username).first()
 
 class GeneratorRepository:
+    """Репозиторий для работы с таблицей генераторов"""
+    
     def __init__(self, db: Session):
         self.db = db
     
-    def create(self, user_id: int, name: str, gen_type: str, params: dict) -> Generator:
-        gen = Generator(user_id=user_id, name=name, gen_type=gen_type, parameters=params)
+    def create(self, name: str, gen_type: str, params: dict, 
+               description: Optional[str] = None) -> Generator:
+        """Создать новую запись эксперимента"""
+        gen = Generator(
+            name=name,
+            gen_type=gen_type,
+            parameters=params,
+            description=description
+        )
         self.db.add(gen)
         self.db.commit()
         self.db.refresh(gen)
         return gen
+    
+    def get_history(self, limit: int = 100) -> List[Generator]:
+        """Получить последние N экспериментов с подгрузкой результатов"""
+        return (self.db.query(Generator)
+                .options(selectinload(Generator.test_results))
+                .order_by(Generator.created_at.desc())
+                .limit(limit)
+                .all())
+    
+    def get_aggregated_statistics(self) -> List[Tuple[Any, ...]]:
+        """
+        Агрегированная статистика по генераторам.
+        Возвращает: (gen_type, total_experiments, total_tests, passed_count, avg_p_value)
+        """
+        # Используем CASE для надёжного подсчёта boolean в PostgreSQL
+        return (self.db.query(
+                Generator.gen_type,
+                func.count(Generator.id.distinct()).label('total_experiments'),
+                func.count(TestResult.id).label('total_tests'),
+                # Надёжный подсчёт: True → 1, False → 0
+                func.sum(case((TestResult.passed.is_(True), 1), else_=0)).label('passed_tests'),
+                func.avg(TestResult.p_value).label('avg_p_value')
+            )
+            .join(TestResult, Generator.id == TestResult.generator_id)
+            .group_by(Generator.gen_type)
+            .all())
+    
+    def get_test_statistics_by_generator(self) -> List[Tuple[Any, ...]]:
+        """Статистика по каждому тесту для каждого генератора"""
+        return (self.db.query(
+                Generator.gen_type,
+                TestResult.test_name,
+                func.count(TestResult.id).label('total'),
+                func.sum(case((TestResult.passed.is_(True), 1), else_=0)).label('passed'),
+                func.avg(TestResult.p_value).label('avg_p_value')
+            )
+            .join(Generator, Generator.id == TestResult.generator_id)
+            .group_by(Generator.gen_type, TestResult.test_name)
+            .order_by(Generator.gen_type, TestResult.test_name)
+            .all())
+    
+    def get_overall_summary(self) -> Optional[Tuple[int, int, float]]:
+        """Общая сводка по всей базе"""
+        return (self.db.query(
+                func.count(Generator.id.distinct()).label('total_experiments'),
+                func.count(TestResult.id).label('total_tests'),
+                func.avg(TestResult.p_value).label('avg_p_value')
+            )
+            .join(TestResult, Generator.id == TestResult.generator_id)
+            .first())
+
 
 class TestResultRepository:
+    """Репозиторий для работы с таблицей результатов тестов"""
+    
     def __init__(self, db: Session):
         self.db = db
-        
+    
     def bulk_create(self, results: List[dict]) -> List[TestResult]:
-        """Массовое создание записей результатов"""
+        """Массовое создание записей результатов тестов"""
         db_results = [TestResult(**r) for r in results]
         self.db.add_all(db_results)
         self.db.commit()
@@ -41,4 +96,7 @@ class TestResultRepository:
         return db_results
     
     def get_by_generator(self, gen_id: int) -> List[TestResult]:
-        return self.db.query(TestResult).filter(TestResult.generator_id == gen_id).all()
+        """Получить все результаты тестов для конкретного эксперимента"""
+        return (self.db.query(TestResult)
+                .filter(TestResult.generator_id == gen_id)
+                .all())

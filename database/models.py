@@ -3,49 +3,35 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from .base import Base
 
-class User(Base):
-    """Модель пользователя (Таблица 'Пользователь' из отчета)"""
-    __tablename__ = "users"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    username = Column(String(50), unique=True, index=True, nullable=False)
-    created_at = Column(DateTime, server_default=func.now())
-    
-    # Связь 1 ко многим
-    generators = relationship("Generator", back_populates="user", cascade="all, delete-orphan")
-    test_results = relationship("TestResult", back_populates="user")
-
 class Generator(Base):
-    """Модель генератора (Таблица 'ГПСЧ' из отчета)"""
+    """Модель генератора (хранит параметры и тип ГСЧ)"""
     __tablename__ = "generators"
     
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
-    name = Column(String(100), nullable=False) # Название ГПСЧ
-    gen_type = Column(String(50))              # Тип (lcg, mersenne...)
-    parameters = Column(JSON)                  # Параметры (a, m, c, seed)
+    name = Column(String(100), nullable=False)      # Название (lcg, mersenne, xorshift, truerng)
+    gen_type = Column(String(50))                   # Тип генератора
+    parameters = Column(JSON)                       # Параметры (a, m, c, seed и т.д.)
     description = Column(String(255))
     created_at = Column(DateTime, server_default=func.now())
     
-    user = relationship("User", back_populates="generators")
+    # Связь 1 ко многим: один генератор → много результатов тестов
     test_results = relationship("TestResult", back_populates="generator", cascade="all, delete-orphan")
 
 class TestResult(Base):
+    """Модель результата статистического теста"""
     __tablename__ = "test_results"
     
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
-    generator_id = Column(Integer, ForeignKey("generators.id", ondelete="CASCADE"))
+    generator_id = Column(Integer, ForeignKey("generators.id", ondelete="CASCADE"), nullable=False)
     
-    test_name = Column(String(100), nullable=False)
+    test_name = Column(String(100), nullable=False) # Monobit, Runs, Autocorrelation, ChiSquare
     p_value = Column(Float, nullable=False)
     statistic = Column(Float)
-    passed = Column(Boolean, default=False)
+    passed = Column(Boolean, default=False)         # p_value >= alpha
     
     sequence_length = Column(Integer)
-    test_parameters = Column(JSON)
-    execution_time = Column(Float)
+    test_parameters = Column(JSON)                  # lag, bins и др.
+    execution_time = Column(Float)                  # Время выполнения теста (мс)
     created_at = Column(DateTime, server_default=func.now())
     
-    user = relationship("User", back_populates="test_results")
     generator = relationship("Generator", back_populates="test_results")
