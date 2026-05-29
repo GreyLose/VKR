@@ -652,10 +652,10 @@ else:
 
 # СЕССИОННАЯ ИСТОРИЯ
 st.divider()
-st.subheader("Сессионная история (текущая сессия)")
+st.subheader("История запросов")
 
 if st.session_state.history:
-    for i, entry in enumerate(reversed(st.session_state.history[-3:]), 1):
+    for i, entry in enumerate(reversed(st.session_state.history), 1):
         with st.expander(
             f"#{len(st.session_state.history) - i + 1} | "
             f"{entry['timestamp'].strftime('%H:%M:%S')} | "
